@@ -5,59 +5,66 @@ NetAddr.localAddr;
 
 (
 SynthDef(\kick, {
-	|out = 0, pan = 0, amp = 0.3, bodyMul = 1, bodyMediumTone = 120, bodyLowTone = 51|
-    var body, bodyFreq, bodyAmp;
-    var pop, popFreq, popAmp;
-    var click, clickAmp;
-    var snd;
+	| out = 0, pan = 0, amp = 0.3,
+	attack = 0, decay = 0.08, pitchLow = 60, pitchHigh = 440, pitchCurve = -4, release = 0, dist = 0 |
+	var snd;
+	var pitchEnv, ampEnv;
+	var click;
 
-    // body starts midrange, quickly drops down to low freqs, and trails off
-    bodyFreq = EnvGen.ar(Env([261, 120, bodyLowTone], [0.035, 0.08], curve: \exp));
-    bodyAmp = EnvGen.ar(Env.linen(0.005, 0.1, 0.3), doneAction: 2);
-    body = SinOsc.ar(bodyFreq) * bodyAmp;
-    // pop sweeps over the midrange
-    popFreq = XLine.kr(750, 261, 0.02);
-    popAmp = EnvGen.ar(Env.linen(0.001, 0.02, 0.001)) * 0.15;
-    pop = SinOsc.ar(popFreq) * popAmp;
-    // click is spectrally rich, covering the high-freq range
-    // you can use Formant, FM, noise, whatever
-    clickAmp = EnvGen.ar(Env.perc(0.001, 0.01)) * 0.15;
-    click = LPF.ar(Formant.ar(910, 4760, 2110), 3140) * clickAmp;
+	pitchEnv = EnvGen.ar(Env.adsr(attack, decay, pitchLow / pitchHigh, 0, pitchHigh, pitchCurve),  doneAction: 2);
+	ampEnv = EnvGen.ar(Env.linen(attack, decay, release + 0.001, 1, 'lin'), doneAction: 2);
 
-    snd = bodyMul * body + pop + click;
-    snd = snd.tanh;
+    click = LPF.ar(Formant.ar(910, 4760, 2110), 3140) * EnvGen.ar(Env.perc(0.001, 0.01)) * 0.15;
+
+	snd =  (1+dist) * SinOsc.ar(pitchEnv) * ampEnv  + click;
+	snd = snd.tanh;
 
     Out.ar(out, Pan2.ar(snd, pan, amp));
 }).add;
 
 SynthDef(\snare, {
-    |out = 0, pan = 0, amp = 0.3|
+    |out = 0, pan = 0, amp = 0.5|
     var pop, popAmp, popFreq;
     var noise, noiseAmp;
     var snd;
 
     // pop makes a click coming from very high frequencies
     // slowing down a little and stopping in mid-to-low
-    popFreq = EnvGen.ar(Env([3261, 410, 160], [0.005, 0.01], curve: \exp));
+	popFreq = EnvGen.ar(Env([3261, 410, 50], [0.005, 0.01], curve: \exp));
     popAmp = EnvGen.ar(Env.perc(0.001, 0.11)) * 0.7;
     pop = SinOsc.ar(popFreq) * popAmp;
     // bandpass-filtered white noise
-    noiseAmp = EnvGen.ar(Env.perc(0.001, 0.15), doneAction: 2);
-    noise = BPF.ar(WhiteNoise.ar, 810, 1.6) * noiseAmp;
+    noiseAmp = EnvGen.ar(Env.perc(0.001, 0.23), doneAction: 2);
+    noise = BPF.ar(WhiteNoise.ar, 810, 1.8) * noiseAmp;
 
     snd = (pop + noise) * 1.3;
 
     Out.ar(out, Pan2.ar(snd, pan, amp));
 }).add;
 
-SynthDef(\hihat, {
+SynthDef(\openhat, {
     |out = 0, pan = 0, amp = 0.3|
     var click, clickAmp;
     var noise, noiseAmp;
     var snd;
 
     // noise -> resonance -> expodec envelope
-    noiseAmp = EnvGen.ar(Env.perc(0.001, 0.3, curve: -8), doneAction: 2);
+    noiseAmp = EnvGen.ar(Env.perc(0.001, 0.85, curve: -8), doneAction: 2);
+    noise = Mix(BPF.ar(ClipNoise.ar, [4010, 4151], [0.15, 0.56], [1.0, 0.6])) * 0.7 * noiseAmp;
+
+    snd = noise;
+
+    Out.ar(out, Pan2.ar(snd, pan, amp));
+}).add;
+
+SynthDef(\closedhat, {
+    |out = 0, pan = 0, amp = 0.3|
+    var click, clickAmp;
+    var noise, noiseAmp;
+    var snd;
+
+    // noise -> resonance -> expodec envelope
+    noiseAmp = EnvGen.ar(Env.perc(0.001, 0.1, curve: -8), doneAction: 2);
     noise = Mix(BPF.ar(ClipNoise.ar, [4010, 4151], [0.15, 0.56], [1.0, 0.6])) * 0.7 * noiseAmp;
 
     snd = noise;
@@ -98,7 +105,7 @@ SynthDef(\clap, {
 
     Out.ar(out, Pan2.ar(snd,pan,amp));
 }).add;
-
+)
 
 (
 OSCdef.new(
@@ -106,13 +113,12 @@ OSCdef.new(
 	{
 		arg msg, time, addr, port;
 		[msg[0]].postln;
-		Synth.new(\kick);
+		Synth.new(\kick, [\dist, 1, \release, 0.45, \attack, 0.01, \decay, 0.2, \pitchHigh, 300, \pitchLow, 60, \pitchCurve, -5] );
 
 	},
 	'/kick'
-));
+);
 
-(
 OSCdef.new(
 	\snare,
 	{
@@ -122,19 +128,42 @@ OSCdef.new(
 
 	},
 	'/snare'
-))
+);
 
-(
 OSCdef.new(
-	\hihat,
+	\openhat,
 	{
 		arg msg, time, addr, port;
 		[msg[0]].postln;
-		Synth.new(\hihat);
+		Synth.new(\openhat);
 
 	},
-	'/hihat'
-))
+	'/openhat'
+);
+
+OSCdef.new(
+	\closedhat,
+	{
+		arg msg, time, addr, port;
+		[msg[0]].postln;
+		Synth.new(\closedhat);
+
+	},
+	'/closedhat'
+);
+
+OSCdef.new(
+	\clap,
+	{
+		arg msg, time, addr, port;
+		[msg[0]].postln;
+		Synth.new(\clap);
+
+	},
+	'/clap'
+)
+);
+
 
 
 
