@@ -1,4 +1,5 @@
 s.boot
+
 s.plotTree
 NetAddr.langPort;
 NetAddr.localAddr;
@@ -6,7 +7,7 @@ NetAddr.localAddr;
 (
 SynthDef(\kick, {
 	| out = 0, pan = 0, amp = 0.3,
-	attack = 0, decay = 0.08, pitchLow = 60, pitchHigh = 440, pitchCurve = -4, release = 0, dist = 0 |
+	attack = 0, decay = 0.08, pitchLow = 60, pitchHigh = 400, pitchCurve = -4, release = 0, dist = 0 |
 	var snd;
 	var pitchEnv, ampEnv;
 	var click;
@@ -15,6 +16,7 @@ SynthDef(\kick, {
 	ampEnv = EnvGen.ar(Env.linen(attack, decay, release + 0.001, 1, 'lin'), doneAction: 2);
 
     click = LPF.ar(Formant.ar(910, 4760, 2110), 3140) * EnvGen.ar(Env.perc(0.001, 0.01)) * 0.15;
+
 
 	snd =  (1+dist) * SinOsc.ar(pitchEnv) * ampEnv  + click;
 	snd = snd.tanh;
@@ -112,9 +114,22 @@ OSCdef.new(
 	\kick,
 	{
 		arg msg, time, addr, port;
-		[msg[0]].postln;
-		Synth.new(\kick, [\dist, 1, \release, 0.45, \attack, 0.01, \decay, 0.2, \pitchHigh, 300, \pitchLow, 60, \pitchCurve, -5] );
+		var dist = msg[1];
+		var numRolls = msg[2];
+		var waitRolls = msg[3];
+		var decay = msg[4];
+		var release = msg[5];
+		var pitchHigh = msg[6];
+		var pitchLow = msg[7];
 
+		msg.postln;
+
+		r = Routine({
+			numRolls.do {|i|
+				Synth.new(\kick, [\amp, 0.25, \dist, dist, \release, release, \attack, 0.0002, \decay, decay, \pitchHigh, pitchHigh, \pitchLow, pitchLow, \pitchCurve, -4] );
+				waitRolls.wait;
+			}
+		}).play;
 	},
 	'/kick'
 );
@@ -161,9 +176,17 @@ OSCdef.new(
 
 	},
 	'/clap'
-)
+);
 );
 
 
+
+// recording
+s.prepareForRecord; // you have to call this first
+s.record;
+s.pauseRecording; // pausable
+s.record // start again
+s.stopRecording; // this closes the file and deallocates the buffer recording node, etc.
+x.free; // stop the synths
 
 
